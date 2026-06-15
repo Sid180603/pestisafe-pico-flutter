@@ -1,0 +1,52 @@
+PestiSafe 2.0 — How to Run (No Hardware)
+==========================================
+
+PREREQUISITES (one-time)
+--------------------------
+cd Thesis
+.venv\Scripts\Activate.ps1          # Windows PowerShell
+pip install microdot pytest         # if not already installed
+
+
+STEP 1 — Start the firmware simulator  (Terminal 1)
+-----------------------------------------------------
+python firmware/main.py
+
+You should see:
+  [MAIN] WebSocket server starting on ws://127.0.0.1:8080/ws
+
+Leave this terminal running.
+
+
+STEP 2 — Run the Flutter app  (Terminal 2)
+--------------------------------------------
+cd pestisafe
+flutter pub get
+flutter run -d chrome --web-header "Cross-Origin-Opener-Policy=same-origin" --web-header "Cross-Origin-Embedder-Policy=require-corp"
+
+NOTE: The two --web-header flags are required.
+      SQLite on web will silently fail without them.
+
+
+STEP 3 — Connect inside the app
+---------------------------------
+On the Connect screen:
+
+  1. Enable the Dev Mode toggle
+     (points the app at 127.0.0.1 instead of the Pico's IP —
+      without this it will try to connect to hardware that isn't there)
+
+  2. Tap Connect
+
+  3. Proceed through: Calibrate → Measure → History → Export CSV
+
+
+RUNNING TESTS
+--------------
+Firmware (54 tests):
+  python -m pytest firmware/tests/ -v
+
+Flutter (16 tests + lint):
+  cd pestisafe
+  flutter test
+  flutter analyze       # must show: No issues found

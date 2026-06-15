@@ -1,0 +1,18 @@
+# wokwi/wokwi.toml
+# Wokwi project configuration for PestiSafe 2.0 hardware demo.
+#
+# Purpose: visual simulation only — demonstrates TFT display boot sequence
+# and live CL/FL ADC readings driven by potentiometers.
+#
+# WiFi (CYW43439) and BLE are NOT simulated by Wokwi.
+# End-to-end app testing uses: python firmware/main.py
+#
+# Open in VS Code with the Wokwi extension, or at https://wokwi.com/.
+
+[wokwi]
+version = 1
+elf = ""
+firmware = "../firmware/main.py"
+
+[env]
+MICROPYTHON = true

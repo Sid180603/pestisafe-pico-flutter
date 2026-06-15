@@ -1,0 +1,32 @@
+# ── Python / Firmware ─────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+dist/
+.venv/
+venv/
+env/
+
+# ── MicroPython build artifacts ───────────────────────────────────────────────
+*.mpy
+
+# ── Personal reference files at repo root (not app assets) ───────────────────
+/IMG-20260320-WA0001.jpeg
+/Project Brief.docx
+/ref.md
+
+# ── OS artefacts ──────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Editor ────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+
+# ── Claude / AI assistant working files ───────────────────────────────────────
+.claude/
