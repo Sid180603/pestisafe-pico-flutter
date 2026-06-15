@@ -1,4 +1,20 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
+
+    <!-- WiFi WebSocket transport -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+
+    <!-- BLE: Legacy (Android ≤ 11) -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
+
+    <!-- BLE: Android 12+ -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
     <application
         android:label="pestisafe"
         android:name="${applicationName}"
@@ -30,16 +46,6 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-        <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
-
-        <!-- Legacy (Android ≤ 11) -->
-        <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
-        <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
-        <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
-
-        <!-- Android 12+ -->
-        <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
-        <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

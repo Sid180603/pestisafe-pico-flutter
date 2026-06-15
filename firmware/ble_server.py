@@ -38,10 +38,7 @@ if sys.platform != "rp2":
 
 # ─── Pico implementation ──────────────────────────────────────────────────────
 #
-# aioble is not acd pestisafe
-flutter run -d chrome `
-  --web-header "Cross-Origin-Opener-Policy=same-origin" `
-  --web-header "Cross-Origin-Embedder-Policy=require-corp" built-in MicroPython module — it must be installed separately
+# aioble is not a built-in MicroPython module — it must be installed separately
 # via `mpremote mip install aioble`.  Wokwi runs MicroPython on rp2 but has no
 # package manager, so aioble will not be present there.  We follow the same
 # graceful-degradation pattern used by hal.py for the ILI9341 driver:

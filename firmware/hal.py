@@ -111,7 +111,7 @@ if ON_PICO:
 
         def start(self):
             self._ap.active(True)
-            self._ap.config(essid=self._ssid, password=self._password, authmode=3)
+            self._ap.config(essid=self._ssid, password=self._password)
             while not self._ap.active():
                 time.sleep(0.1)
             print(f"[WiFi] AP active — {self._ap.ifconfig()[0]}")
