@@ -64,6 +64,22 @@ On the **Connect** screen, enable the **Dev Mode** toggle (switches target to `1
 
 ---
 
+## Building a Release APK
+
+```powershell
+cd pestisafe
+flutter build apk --release
+# Output: build/app/outputs/flutter-apk/app-release.apk
+```
+
+**Requirements:**
+- A **full JDK 21** (not just a JRE — the build needs `jlink`, which JRE-only runtimes such as the VS Code Java extension's bundled runtime do not include). `android/gradle.properties` sets `org.gradle.java.home`; point it at a stable JDK path.
+- `compileSdk = 36` in `android/app/build.gradle.kts` (required by `flutter_blue_plus`, `sqflite`, `path_provider`, `shared_preferences`).
+
+Install the APK by transferring it to the phone (USB / email / Drive) or with `flutter install -d <device-id>`. To run the app against a real Pico WH, connect the phone to the `PestiSafe_AP` WiFi (Dev Mode **off**) or use BLE mode.
+
+---
+
 ## Connect via BLE (Android only, real Pico WH required)
 
 1. Install aioble on the Pico: `mpremote mip install aioble`
@@ -89,22 +105,60 @@ WiFi and BLE are not simulated in Wokwi. For end-to-end testing use `python firm
 
 ## Deploying to a Real Pico WH
 
-```bash
-# Install dependencies
-mpremote mip install microdot
-mpremote mip install aioble
+### 1. Flash MicroPython (first time only)
 
-# Copy firmware files
-mpremote cp firmware/config.py     :config.py
-mpremote cp firmware/hal.py        :hal.py
-mpremote cp firmware/sensor.py     :sensor.py
-mpremote cp firmware/protocol.py   :protocol.py
-mpremote cp firmware/server.py     :server.py
-mpremote cp firmware/ble_server.py :ble_server.py
-mpremote cp firmware/main.py       :main.py
+A board shipped with other firmware (e.g. C/Arduino) must be flashed with MicroPython first:
+
+1. Hold the **BOOTSEL** button, plug the board into USB, release after ~2 s — a drive named `RPI-RP2` appears.
+2. Download the latest **Pico W** firmware (`.uf2`) from [micropython.org/download/RPI_PICO_W](https://micropython.org/download/RPI_PICO_W/).
+3. Copy the `.uf2` onto the `RPI-RP2` drive. The board reboots and re-appears as a serial (COM) port.
+
+Confirm it is running MicroPython (replace `COM8` with your port — find it with `mpremote connect list`):
+
+```bash
+mpremote connect COM8 eval "print('hello')"
 ```
 
-The ILI9341 TFT driver must also be placed on the Pico at `drivers/ili9341/ili9341.py`. The HAL degrades gracefully if it is absent (`_HAS_DRIVER = False`).
+### 2. Install dependencies
+
+`aioble` installs from micropython.org, but **Microdot must be installed as a package** (the bare `mip install microdot` does not resolve). Install each module, then move it under `/lib/microdot/`:
+
+```bash
+# aioble (BLE) — installs directly
+mpremote connect COM8 mip install aioble
+
+# Microdot — install the three modules, then assemble the package
+mpremote connect COM8 mip install --target /lib github:miguelgrinberg/microdot/src/microdot/microdot.py
+mpremote connect COM8 mip install --target /lib github:miguelgrinberg/microdot/src/microdot/websocket.py
+mpremote connect COM8 mip install --target /lib github:miguelgrinberg/microdot/src/microdot/helpers.py
+
+# Move them into a /lib/microdot/ package (server.py imports `from microdot.websocket import ...`)
+mpremote connect COM8 mkdir :lib/microdot
+mpremote connect COM8 cp :lib/microdot.py  :lib/microdot/microdot.py
+mpremote connect COM8 cp :lib/websocket.py :lib/microdot/websocket.py
+mpremote connect COM8 cp :lib/helpers.py   :lib/microdot/helpers.py
+mpremote connect COM8 rm :lib/microdot.py
+mpremote connect COM8 rm :lib/websocket.py
+mpremote connect COM8 rm :lib/helpers.py
+```
+
+The package also needs an `__init__.py` exporting `Microdot` (one line: `from microdot.microdot import Microdot, Request, Response, abort, redirect, send_file, URLPattern, AsyncBytesIO, iscoroutine`). Create it at `:lib/microdot/__init__.py`.
+
+### 3. Copy firmware files
+
+```bash
+mpremote connect COM8 cp firmware/config.py     :config.py
+mpremote connect COM8 cp firmware/hal.py        :hal.py
+mpremote connect COM8 cp firmware/sensor.py     :sensor.py
+mpremote connect COM8 cp firmware/protocol.py   :protocol.py
+mpremote connect COM8 cp firmware/server.py     :server.py
+mpremote connect COM8 cp firmware/ble_server.py :ble_server.py
+mpremote connect COM8 cp firmware/main.py       :main.py
+```
+
+The ILI9341 TFT driver must also be placed on the Pico at `drivers/ili9341/ili9341.py`. The HAL degrades gracefully if it is absent (`_HAS_DRIVER = False`) and prints status to the console instead.
+
+> **Note:** Connecting via `mpremote` performs a soft reset that stops `main.py` (and drops the WiFi AP). For standalone use, just power the board — do not keep a serial session attached.
 
 On first boot the Pico creates a WiFi Soft-AP:
 
@@ -134,7 +188,7 @@ python -m pytest firmware/tests/ -v
 
 ```powershell
 cd pestisafe
-flutter test          # 16 tests: HomeScreen + ConnectScreen widget tests + math utils
+flutter test          # 27 tests: HomeScreen + ConnectScreen widget tests + math utils
 flutter analyze       # must report 0 errors, 0 warnings
 ```
 

@@ -25,4 +25,13 @@ android {
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_11.toString()
     }
+
+    buildTypes {
+        release {
+            // Sign the release build with the debug key so the APK is
+            // installable via sideloading (good enough for testing / demo).
+            // Replace with a proper upload keystore before publishing to Play.
+            signingConfig = signingConfigs.getByName("debug")
+        }
+    }
 }
