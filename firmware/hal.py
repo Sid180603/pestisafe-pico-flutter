@@ -102,19 +102,61 @@ else:
 
 if ON_PICO:
     import network  # type: ignore
+    from config import WIFI_COUNTRY
 
     class WiFiAP:
         def __init__(self, ssid: str, password: str):
+            # Set the regulatory domain BEFORE activating the interface, otherwise
+            # the CYW43 radio reports active() == True but never beacons, making the
+            # AP invisible to phones and laptops.
+            try:
+                network.country(WIFI_COUNTRY)
+            except Exception as e:
+                print(f"[WiFi] country() not set: {e}")
             self._ap = network.WLAN(network.AP_IF)
             self._ssid = ssid
             self._password = password
 
         def start(self):
+            # Cold-boot ordering matters. On a freshly powered CYW43 chip, calling
+            # active(True) first brings the AP up under its DEFAULT name ("PICO<MAC>")
+            # and a later config(ssid=...) does not reliably rename the live beacon.
+            # So we set the SSID/password BEFORE activating, then re-apply and verify
+            # in a retry loop after activation to make the name stick on cold boot.
+            #
+            # Also: use ssid= (NOT essid=) on MicroPython v1.23+. essid= is stored
+            # and echoed back by config('essid') but is NOT applied to the broadcast.
+            self._ap.active(False)
+            time.sleep(0.5)
+
+            # 1) Configure name/password BEFORE bringing the interface up.
+            try:
+                self._ap.config(ssid=self._ssid, password=self._password)
+            except Exception as e:
+                print(f"[WiFi] pre-activate config failed: {e}")
+
+            # 2) Activate the radio.
             self._ap.active(True)
-            self._ap.config(essid=self._ssid, password=self._password)
             while not self._ap.active():
                 time.sleep(0.1)
-            print(f"[WiFi] AP active — {self._ap.ifconfig()[0]}")
+
+            # 3) Re-apply and verify the SSID actually took effect. On cold boot the
+            #    first apply can be ignored, so retry until the broadcast name matches.
+            for _ in range(10):
+                try:
+                    self._ap.config(ssid=self._ssid, password=self._password)
+                except Exception as e:
+                    print(f"[WiFi] post-activate config failed: {e}")
+                try:
+                    current = self._ap.config("ssid")
+                except Exception:
+                    current = None
+                if current == self._ssid:
+                    break
+                time.sleep(0.5)
+
+            time.sleep(1)  # give the beacon time to start
+            print(f"[WiFi] AP '{self._ssid}' active — {self._ap.ifconfig()[0]}")
 
         @property
         def ip(self) -> str:

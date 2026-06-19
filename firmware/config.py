@@ -31,6 +31,9 @@ WIFI_SSID     = "PestiSafe_AP"
 WIFI_PASSWORD = "pestisafe2024"
 WIFI_HOST     = "0.0.0.0"
 WIFI_PORT     = 8080
+# Regulatory domain for the CYW43 radio. Without a country code the Pico W
+# brings the AP interface up but never transmits beacons (the AP is invisible).
+WIFI_COUNTRY  = "IN"
 
 # ─── Protocol message types ───────────────────────────────────────────────────
 MSG_SENSOR     = "sensor"      # {"type":"sensor","cl":x,"fl":y}
