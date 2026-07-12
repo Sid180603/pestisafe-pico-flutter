@@ -69,7 +69,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
       [
         'ID', 'Timestamp', 'Pesticide', 'Commodity',
         'CL ($unit)', 'FL ($unit)', 'Avg ($unit)',
-        'MRL ($unit)', 'Result', 'CL/FL Agreed',
+        'MRL ($unit)', 'CL (V)', 'FL (V)', 'Result', 'CL/FL Agreed',
+        'Low Confidence',
       ],
       ...export.map((r) => [
         r['id'],
@@ -80,8 +81,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
         (r['fl_conc']  as num).toDouble() * scale,
         (r['avg_conc'] as num).toDouble() * scale,
         (r['mrl']      as num).toDouble() * scale,
+        (r['cl_voltage'] as num?)?.toDouble() ?? 0.0,
+        (r['fl_voltage'] as num?)?.toDouble() ?? 0.0,
         r['result'],
         r['agreement'] == 1 ? 'Yes' : 'No',
+        (r['low_confidence'] as int?) == 1 ? 'Yes' : 'No',
       ]),
     ];
 
@@ -319,6 +323,9 @@ class _RecordCard extends StatelessWidget {
 
     final avgPpm = (record['avg_conc'] as num).toDouble();
     final mrlPpm = (record['mrl']     as num).toDouble();
+    final clV    = (record['cl_voltage'] as num?)?.toDouble() ?? 0.0;
+    final flV    = (record['fl_voltage'] as num?)?.toDouble() ?? 0.0;
+    final lowConf = (record['low_confidence'] as int?) == 1;
 
     // Retrieve a safe name for the pesticide from MrlData if possible.
     final pesticideName = record['pesticide'] as String;
@@ -424,6 +431,40 @@ class _RecordCard extends StatelessWidget {
                     ),
                 ],
               ),
+              const SizedBox(height: 2),
+
+              // Row 4: raw TIA voltages
+              Text(
+                'CL ${clV.toStringAsFixed(3)} V  ·  FL ${flV.toStringAsFixed(3)} V',
+                style: const TextStyle(fontSize: 11, color: Colors.black45),
+              ),
+
+              // Row 5: low-confidence badge (overridden low-R² calibration)
+              if (lowConf) ...[
+                const SizedBox(height: 6),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.orange.shade300),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.warning_amber_outlined,
+                          size: 13, color: Colors.orange.shade800),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Low confidence (low R² calibration)',
+                        style: TextStyle(
+                            fontSize: 10.5, color: Colors.orange.shade900),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         ),

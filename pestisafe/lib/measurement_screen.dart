@@ -170,9 +170,16 @@ class _MeasurementScreenState extends State<MeasurementScreen> {
     final clMean = clSum / received;
     final flMean = flSum / received;
 
-    // Apply calibration: conc = slope × reading + intercept
-    _concCL = appState.clSlope * clMean + appState.clIntercept;
-    _concFL = appState.flSlope * flMean + appState.flIntercept;
+    // Apply calibration: model is V = m·C + b → invert to C = (V − b) / m.
+    // Clamp to ≥ 0: a voltage below the blank intercept is unphysical (sub-zero conc).
+    _concCL = appState.clSlope.abs() < 1e-9
+        ? 0.0
+        : ((clMean - appState.clIntercept) / appState.clSlope)
+            .clamp(0.0, double.infinity);
+    _concFL = appState.flSlope.abs() < 1e-9
+        ? 0.0
+        : ((flMean - appState.flIntercept) / appState.flSlope)
+            .clamp(0.0, double.infinity);
 
     // FL-preferred agreement rule (professor's specification, 5 % threshold)
     final fp     = flPreferred(_concCL, _concFL);
@@ -202,15 +209,18 @@ class _MeasurementScreenState extends State<MeasurementScreen> {
     // Persist to history database (best-effort; failure doesn't discard the result).
     try {
       await DatabaseHelper.instance.insertMeasurement({
-        'timestamp': DateTime.now().toIso8601String(),
-        'pesticide': pesticide,
-        'commodity': commodity,
-        'cl_conc':   _concCL,
-        'fl_conc':   _concFL,
-        'avg_conc':  _avgConc,
-        'mrl':       mrl,
-        'result':    _tier == _SafetyTier.safe ? 'SAFE' : 'UNSAFE',
-        'agreement': _agreementOk ? 1 : 0,
+        'timestamp':  DateTime.now().toIso8601String(),
+        'pesticide':  pesticide,
+        'commodity':  commodity,
+        'cl_conc':    _concCL,
+        'fl_conc':    _concFL,
+        'avg_conc':   _avgConc,
+        'mrl':        mrl,
+        'result':     _tier == _SafetyTier.safe ? 'SAFE' : 'UNSAFE',
+        'agreement':  _agreementOk ? 1 : 0,
+        'cl_voltage': clMean,
+        'fl_voltage': flMean,
+        'low_confidence': appState.calibrationLowConfidence ? 1 : 0,
       });
     } catch (_) {
       // DB unavailable (e.g. sqflite_sw.js not yet installed on web) —

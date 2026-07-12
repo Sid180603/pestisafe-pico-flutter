@@ -19,8 +19,9 @@
 
 /// Least-squares linear fit for calibration curve.
 ///
-/// [x] = normalised ADC readings (0–1), [y] = known concentrations in ppm (mg/kg).
+/// [x] = known concentrations in ppm (mg/kg), [y] = measured TIA voltages (V).
 /// Returns [slope, intercept, r²] such that  y ≈ slope·x + intercept.
+/// Invert at measurement time: concentration = (voltage − intercept) / slope.
 ///
 /// Scientific rationale: Beer-Lambert law states that absorbance is linearly
 /// proportional to concentration (A = ε·c·l). A linear fit is therefore the

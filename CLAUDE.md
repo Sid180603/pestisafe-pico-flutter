@@ -29,7 +29,8 @@ flutter pub get                          # install / update dependencies
 flutter analyze                          # lint — must stay at 0 errors/warnings
 flutter test                             # run all tests (widget + math_utils)
 flutter test test/widget_test.dart       # run a single test file
-flutter test test/math_utils_test.dart   # run math utils unit tests
+flutter test test/math_utils_test.dart       # run math utils unit tests
+flutter test test/connect_screen_test.dart   # run ConnectScreen widget tests
 flutter run -d chrome \
   --web-header "Cross-Origin-Opener-Policy=same-origin" \
   --web-header "Cross-Origin-Embedder-Policy=require-corp"   # web (required for SQLite WASM)
@@ -51,7 +52,7 @@ pip install microdot pytest
 # Start firmware server on PC
 python firmware/main.py                  # ws://127.0.0.1:8080/ws
 
-# Run all firmware tests (54 total: 17 sensor + 14 protocol + 12 calibration + 11 BLE server)
+# Run all firmware tests (59 total: sensor + protocol + calibration + BLE server)
 python -m pytest firmware/tests/ -v
 python -m pytest firmware/tests/test_sensor.py               # single file
 python -m pytest firmware/tests/test_ble_server.py           # BLE config + PC stub
@@ -129,17 +130,25 @@ All messages are JSON with a `"v": 1` protocol version field — including synth
 | App → firmware | `cal_start` | `level` | Begin calibration level |
 | App → firmware | `cal_sample` | `level`, `sample` | Collect one calibration sample |
 | App → firmware | `cal_end` | — | All levels collected; firmware resets mode to "waiting" |
-| Firmware → app | `sensor` | `cl`, `fl` | Normalised ADC values [0, 1] |
-| Firmware → app | `cal_ack` | `level`, `sample`, `cl`, `fl` | Single calibration sample result |
+| Firmware → app | `sensor` | `cl`, `fl` | TIA output voltages in [0, 3.3] V |
+| Firmware → app | `cal_ack` | `level`, `sample`, `cl`, `fl` | Calibration sample result (cl/fl are voltages in V) |
 | Firmware → app | `status` | `state` | `"waiting"` \| `"measuring"` \| `"calibrating"` |
 | Firmware → app | `heartbeat` | — | Echo of keep-alive |
 | Firmware → app | `error` | `msg` | Firmware-side error string |
 
 `Protocol.parseSensor()` and `Protocol.parseCalAck()` throw `FormatException` (not `TypeError`) on missing/non-numeric fields so screen-level `on FormatException catch (_) {}` handlers catch them correctly. Never use bare `catch (_) {}` in message listeners.
 
+### Sensor value units
+
+Firmware reports **TIA output voltages** in [0, ADC_VREF] V (0–3.3 V), NOT normalised 0–1 ratios. The calibration model is `V = slope × C + intercept` (voltage on Y, concentration on X), so measurement inverts as `C = (V − intercept) / slope`. The app side (`math_utils.dart: linearFit()`) fits x=concentrations, y=voltages, and the measurement screen inverts accordingly.
+
+On PC, `hal.py` uses a linear ADC simulator (Option B): `V = base_V[pin] + slope_V[pin] × conc_ppm` with distinct slopes for CL (1.50 V/ppm) and FL (1.70 V/ppm) so calibration curves are visibly different. When `conc=None` (bare measurement), fixed voltages (CL=1.00 V, FL=1.10 V) are returned. Gaussian noise (σ=150 counts ≈ 0.0075 V) is added for realism.
+
 ### Firmware HAL pattern
 
 `firmware/hal.py` detects `sys.platform == "rp2"` and provides two class implementations under the same name: one for real Pico hardware, one stub for PC. All other firmware files import only from `hal.py`—never from `machine` or `network` directly. This is why the firmware runs unchanged on both platforms.
+
+`server.py` exposes a module-level `_state` dict that both `server.py` (WebSocket handler) and `ble_server.py` (GATT handler) import and update. `main.py:display_task()` also reads from `_state` to drive TFT output. This is the single source of truth for firmware runtime state (`mode`, `last_cl`, `last_fl`, `cal_level`).
 
 `firmware/config.py` is the single source of truth for every pin number, WiFi credential, and protocol constant. Nothing is hardcoded elsewhere.
 
@@ -183,6 +192,8 @@ N levels: Blank (0.00 fixed) + N user-editable standards (starts at 3: Std 1/2/3
 5. Navigates to `MeasurementScreen`
 
 `AppState.isCalibrated` returns true only when both `clR2 > 0` and `flR2 > 0`. `AppState.selectedUnit` ('ppm'/'ppb') is persisted in SharedPreferences and used by calibration, measurement, and history screens for display and CSV export.
+
+`AppState.isDevMode` is set when connected via Dev Mode (127.0.0.1). When true, `CalibrationScreen` bypasses R² quality checks so PC-simulated data (which has noise and will rarely reach R² ≥ 0.95) can proceed to measurement.
 
 ### Measurement and safety classification
 

@@ -102,7 +102,11 @@ else:
         elif cmd == "cal_sample":
             level      = msg.get("level", "")
             sample_idx = msg.get("sample", 0)
-            cl, fl     = await read_sensors()
+            try:
+                conc_val = float(level)
+            except (ValueError, TypeError):
+                conc_val = None
+            cl, fl     = await read_sensors(conc=conc_val)
             _state["last_cl"] = cl
             _state["last_fl"] = fl
             await _notify(conn, protocol.encode_cal_ack(level, sample_idx, cl, fl))

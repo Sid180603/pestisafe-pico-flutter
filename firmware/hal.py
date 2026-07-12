@@ -19,23 +19,38 @@ if ON_PICO:
         def __init__(self, pin: int):
             self._adc = ADC(Pin(pin))
 
-        def read_u16(self) -> int:
-            """Returns raw 16-bit ADC value (0–65535)."""
+        def read_u16(self, conc=None) -> int:
+            """Returns raw 16-bit ADC value (0–65535). conc is ignored on hardware."""
             return self._adc.read_u16()
 
 else:
     import random
+    from config import ADC_VREF as _ADC_VREF, ADC_MAX as _ADC_MAX
+
+    # Option B: simulate a realistic linear TIA output for PC demo.
+    # V = _BASE_V[pin] + _SLOPE_V[pin] * conc_ppm during calibration.
+    # CL and FL have distinct slopes so the two calibration curves are visibly
+    # different — matching real dual-channel photodiode TIA circuit behaviour.
+    _SIM_BASE_V  = {26: 0.50, 27: 0.40}   # blank voltage (V at C=0)
+    _SIM_SLOPE_V = {26: 1.50, 27: 1.70}   # V per ppm
+    _SIM_MEAS_V  = {26: 1.00, 27: 1.10}   # fixed voltage returned during bare measurement
 
     class ADCChannel:
-        """Simulated ADC on PC — Gaussian noise around mid-scale."""
+        """Simulated ADC on PC — Option B: linear voltage-vs-concentration response.
+        Calibration calls pass conc (ppm) and get a clean linear V; measurement
+        calls (conc=None) return a fixed mid-range voltage."""
         def __init__(self, pin: int):
             self._pin = pin
-            # Slightly different base per channel so CL and FL aren't identical
-            self._base = 30000 if pin == 26 else 34000
 
-        def read_u16(self) -> int:
-            noise = int(random.gauss(0, 600))
-            return max(0, min(65535, self._base + noise))
+        def read_u16(self, conc=None) -> int:
+            if conc is not None:
+                voltage = _SIM_BASE_V[self._pin] + _SIM_SLOPE_V[self._pin] * conc
+            else:
+                voltage = _SIM_MEAS_V[self._pin]
+            voltage = max(0.0, min(_ADC_VREF, voltage))
+            noise = int(random.gauss(0, 150))   # ~0.0075 V noise — small for a clean line
+            raw = int(voltage / _ADC_VREF * _ADC_MAX)
+            return max(0, min(_ADC_MAX, raw + noise))
 
 
 # ──────────────────────────────────────────────────────────────────────────────

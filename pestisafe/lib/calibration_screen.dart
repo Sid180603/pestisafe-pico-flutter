@@ -79,6 +79,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
   bool _stabilizing        = false; // true during 10-second countdown
   int  _stabilizeRemain    = 0;     // seconds left in countdown
   bool _showAddPointOption = false;
+  bool _allowProceedAnyway = false; // true when R² < 0.95 in production mode
   String? _warning;
 
   double _clSlope = 0, _clIntercept = 0, _clR2 = 0;
@@ -206,9 +207,10 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
 
   void _computeCalibration() {
     final concs = _concentrations;
-    // x = ADC readings (normalised), y = known concentrations (ppm internally)
-    final clFit = linearFit(_clMeans, concs.sublist(0, _clMeans.length));
-    final flFit = linearFit(_flMeans, concs.sublist(0, _flMeans.length));
+    // x = known concentrations (ppm internally), y = measured TIA voltages (V)
+    // Model: V = m·C + b  →  slope = V per ppm, intercept = blank voltage
+    final clFit = linearFit(concs.sublist(0, _clMeans.length), _clMeans);
+    final flFit = linearFit(concs.sublist(0, _flMeans.length), _flMeans);
 
     _clSlope = clFit[0]; _clIntercept = clFit[1]; _clR2 = clFit[2];
     _flSlope = flFit[0]; _flIntercept = flFit[1]; _flR2 = flFit[2];
@@ -220,23 +222,28 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
       // Dev mode: skip R² quality checks — mock server returns random ADC
       // values that will never produce a meaningful R².
       _showAddPointOption = false;
+      _allowProceedAnyway = false;
       _warning = 'Dev mode — R² check bypassed (R² = ${minR2.toStringAsFixed(4)})';
     } else if (minR2 < 0.95) {
-      // Below minimum — block proceeding; offer add-point or recalibrate.
+      // Below minimum — block proceeding; offer add-point, recalibrate, or
+      // an explicit "Proceed Anyway" override (guarded by a confirmation).
       _calibrated = false;
       _showAddPointOption = true;
+      _allowProceedAnyway = true;
       _warning = 'R² = ${minR2.toStringAsFixed(4)} (below 0.95). '
-          'Add another calibration point or recalibrate from scratch.';
+          'Add another calibration point, recalibrate, or proceed anyway.';
       setState(() {});
       return;
     } else if (minR2 < 0.99) {
       // Acceptable but not ideal — warn and offer improvement.
       _showAddPointOption = true;
+      _allowProceedAnyway = false;
       _warning = 'R² = ${minR2.toStringAsFixed(4)} (below 0.99). '
           'Consider adding a point to improve linearity.';
     } else {
       // Excellent.
       _showAddPointOption = false;
+      _allowProceedAnyway = false;
       _warning = null;
     }
 
@@ -252,6 +259,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
       clR2:        _clR2,
       flR2:        _flR2,
       pesticide:   _selectedPesticide,
+      lowConfidence: false,
     );
 
     // Tell the firmware calibration is done — resets its TFT display to "waiting".
@@ -260,12 +268,67 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
     setState(() {});
   }
 
+  /// Override the R² < 0.95 block after an explicit user confirmation.
+  /// Persists the coefficients flagged as low-confidence, informs the firmware,
+  /// and reveals the normal "Proceed to Measurement" flow.
+  Future<void> _proceedAnyway() async {
+    final minR2 = _clR2 < _flR2 ? _clR2 : _flR2;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Proceed with low R²?'),
+        content: Text(
+          'R² = ${minR2.toStringAsFixed(4)} is below the recommended minimum '
+          'of 0.95. The calibration line does not fit the data well, so '
+          'measurements may be inaccurate.\n\n'
+          'These measurements will be tagged "low confidence" in the history. '
+          'Proceed anyway?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Proceed Anyway',
+                style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final appState = Provider.of<AppState>(context, listen: false);
+    appState.updateCalibration(
+      clSlope:     _clSlope,
+      clIntercept: _clIntercept,
+      flSlope:     _flSlope,
+      flIntercept: _flIntercept,
+      clR2:        _clR2,
+      flR2:        _flR2,
+      pesticide:   _selectedPesticide,
+      lowConfidence: true,
+    );
+    appState.connection?.send(Protocol.encodeCalEnd());
+
+    setState(() {
+      _calibrated = true;
+      _showAddPointOption = false;
+      _allowProceedAnyway = false;
+      _warning = 'Proceeding with low R² = ${minR2.toStringAsFixed(4)} — '
+          'measurements are tagged low confidence.';
+    });
+  }
+
   /// Append one more calibration level; keep existing collected data.
   void _addCalibrationPoint() {
     setState(() {
       _concControllers.add(TextEditingController(text: ''));
       _calibrated = false;
       _showAddPointOption = false;
+      _allowProceedAnyway = false;
       _warning = null;
       _currentLevel = _clMeans.length; // next uncollected level index
     });
@@ -293,6 +356,7 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
       _stabilizing        = false;
       _stabilizeRemain    = 0;
       _showAddPointOption = false;
+      _allowProceedAnyway = false;
       _warning            = null;
       _clSlope = _clIntercept = _clR2 = 0;
       _flSlope = _flIntercept = _flR2 = 0;
@@ -302,19 +366,24 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
   // ── fl_chart helpers ───────────────────────────────────────────────────────
 
   /// Regression line only — two endpoints, no dots.
+  /// The model is V = slope·C + intercept; X axis is concentration in display
+  /// units, Y axis is voltage in V.
   LineChartBarData _chartLine(
     List<double> means,
     double slope,
     double intercept,
     Color color,
   ) {
-    final xMin  = means.reduce((a, b) => a < b ? a : b);
-    final xMax  = means.reduce((a, b) => a > b ? a : b);
+    final concs = _concentrations;
+    final n = means.length;
     final scale = _fromPpm;
+    // X endpoints in display units; Y = m·C_ppm + b (voltage, no unit scale)
+    final xMin = concs.sublist(0, n).reduce((a, b) => a < b ? a : b) * scale;
+    final xMax = concs.sublist(0, n).reduce((a, b) => a > b ? a : b) * scale;
     return LineChartBarData(
       spots: [
-        FlSpot(xMin, (slope * xMin + intercept) * scale),
-        FlSpot(xMax, (slope * xMax + intercept) * scale),
+        FlSpot(xMin, slope * (xMin / scale) + intercept),
+        FlSpot(xMax, slope * (xMax / scale) + intercept),
       ],
       color: color,
       isCurved: false,
@@ -327,9 +396,10 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
   LineChartBarData _chartDots(List<double> means, Color color) {
     final concs = _concentrations;
     final scale = _fromPpm;
+    // X = concentration in display units, Y = measured voltage (no scale)
     return LineChartBarData(
       spots: List.generate(
-          means.length, (i) => FlSpot(means[i], concs[i] * scale)),
+          means.length, (i) => FlSpot(concs[i] * scale, means[i])),
       color: color,
       isCurved: false,
       barWidth: 0,
@@ -357,8 +427,8 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
           borderData: FlBorderData(show: true),
           titlesData: FlTitlesData(
             bottomTitles: AxisTitles(
-              axisNameWidget: const Text('ADC reading (norm.)',
-                  style: TextStyle(fontSize: 10)),
+              axisNameWidget: Text('Conc. ($unit)',
+                  style: const TextStyle(fontSize: 10)),
               sideTitles: SideTitles(
                 showTitles: true,
                 reservedSize: 28,
@@ -369,8 +439,8 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
               ),
             ),
             leftTitles: AxisTitles(
-              axisNameWidget: Text('Conc. ($unit)',
-                  style: const TextStyle(fontSize: 10)),
+              axisNameWidget: const Text('Voltage (V)',
+                  style: TextStyle(fontSize: 10)),
               sideTitles: SideTitles(
                 showTitles: true,
                 reservedSize: 36,
@@ -858,6 +928,18 @@ class _CalibrationScreenState extends State<CalibrationScreen> {
                     ),
                   ],
                 ),
+                if (_allowProceedAnyway) ...[
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.warning_amber_outlined),
+                    label: const Text('Proceed Anyway (low R²)'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red.shade700,
+                      side: BorderSide(color: Colors.red.shade300),
+                    ),
+                    onPressed: _proceedAnyway,
+                  ),
+                ],
               ],
 
               if (_calibrated) ...[

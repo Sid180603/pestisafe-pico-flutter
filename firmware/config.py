@@ -25,6 +25,7 @@ CL_ADC_PIN  = 26        # GP26 = ADC0 — Colorimetric (CL) sensor
 FL_ADC_PIN  = 27        # GP27 = ADC1 — Fluorescence (FL) sensor
 ADC_SAMPLES = 5         # Median-filter window size (odd preferred)
 ADC_MAX     = 65535     # RP2040 read_u16() full-scale value (2¹⁶ − 1)
+ADC_VREF    = 3.3       # Pico WH ADC reference voltage (V). No external divider on TIA output.
 
 # ─── WiFi (Soft-AP) ──────────────────────────────────────────────────────────
 WIFI_SSID     = "PestiSafe_AP"

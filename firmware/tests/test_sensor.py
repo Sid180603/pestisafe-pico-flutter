@@ -84,3 +84,37 @@ class TestMedianEdgeCases:
     def test_floats(self):
         result = _median([1.5, 2.5, 3.5])
         assert abs(result - 2.5) < 1e-9
+
+
+class TestVoltageRange:
+    """Validate the raw→voltage conversion formula used by sensor.py.
+
+    Formula: volts = raw / ADC_MAX * ADC_VREF
+    Expected range: [0, 3.3] V for any raw value in [0, ADC_MAX].
+    """
+
+    def test_vref_constant_is_3p3(self):
+        from config import ADC_VREF
+        assert ADC_VREF == 3.3
+
+    def test_zero_raw_gives_zero_volts(self):
+        from config import ADC_MAX, ADC_VREF
+        assert 0 / ADC_MAX * ADC_VREF == 0.0
+
+    def test_max_raw_gives_vref(self):
+        from config import ADC_MAX, ADC_VREF
+        voltage = ADC_MAX / ADC_MAX * ADC_VREF
+        assert abs(voltage - ADC_VREF) < 1e-9
+
+    def test_mid_raw_gives_approx_half_vref(self):
+        from config import ADC_MAX, ADC_VREF
+        mid = ADC_MAX // 2   # 32767
+        voltage = mid / ADC_MAX * ADC_VREF
+        # 32767/65535 * 3.3 ≈ 1.6498 V — within 0.1 V of half VREF
+        assert abs(voltage - ADC_VREF / 2) < 0.1
+
+    def test_voltage_always_in_range(self):
+        from config import ADC_MAX, ADC_VREF
+        for raw in [0, 1000, 32767, 65534, ADC_MAX]:
+            voltage = raw / ADC_MAX * ADC_VREF
+            assert 0.0 <= voltage <= ADC_VREF + 1e-9

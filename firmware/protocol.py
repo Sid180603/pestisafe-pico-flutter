@@ -10,7 +10,7 @@ from config import (MSG_SENSOR, MSG_STATUS, MSG_HEARTBEAT, MSG_ERROR,
 
 
 def encode_sensor(cl: float, fl: float) -> str:
-    """{"v":1,"type":"sensor","cl":0.4587,"fl":0.5123}"""
+    """{"v":1,"type":"sensor","cl":1.5023,"fl":1.3891}  — values are TIA voltages in V"""
     return json.dumps({"v": PROTOCOL_VERSION, "type": MSG_SENSOR,
                        "cl": round(cl, 4), "fl": round(fl, 4)})
 
@@ -31,7 +31,7 @@ def encode_error(msg: str) -> str:
 
 
 def encode_cal_ack(level: str, sample: int, cl: float, fl: float) -> str:
-    """{"v":1,"type":"cal_ack","level":"0.10","sample":2,"cl":0.4587,"fl":0.5123}"""
+    """{"v":1,"type":"cal_ack","level":"0.10","sample":2,"cl":1.5023,"fl":1.3891}  — cl/fl are voltages in V"""
     return json.dumps({"v": PROTOCOL_VERSION, "type": MSG_CAL_ACK,
                        "level": level, "sample": sample,
                        "cl": round(cl, 4), "fl": round(fl, 4)})

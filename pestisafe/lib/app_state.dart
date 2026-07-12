@@ -30,12 +30,19 @@ class AppState extends ChangeNotifier {
   }
 
   // ── Calibration Coefficients ─────────────────────────────────────────────
+  // Model: V = slope · C + intercept  (voltage on Y, concentration on X)
+  // Measurement inversion: C = (V − intercept) / slope
   double clSlope = 0;
   double clIntercept = 0;
   double flSlope = 0;
   double flIntercept = 0;
   double clR2 = 0;
   double flR2 = 0;
+
+  /// True when the stored calibration was accepted via "Proceed Anyway"
+  /// despite R² being below the 0.95 minimum. Measurements taken under such a
+  /// calibration are tagged low-confidence in the history database.
+  bool calibrationLowConfidence = false;
 
   /// True once a successful calibration has been stored.
   bool get isCalibrated => clR2 > 0 && flR2 > 0;
@@ -51,6 +58,7 @@ class AppState extends ChangeNotifier {
     required double clR2,
     required double flR2,
     String? pesticide,
+    bool lowConfidence = false,
   }) {
     this.clSlope     = clSlope;
     this.clIntercept = clIntercept;
@@ -58,6 +66,7 @@ class AppState extends ChangeNotifier {
     this.flIntercept = flIntercept;
     this.clR2        = clR2;
     this.flR2        = flR2;
+    calibrationLowConfidence = lowConfidence;
     if (pesticide != null) selectedPesticide = pesticide;
     notifyListeners();
     _saveToPrefs(); // single write covers both coefficients and pesticide
@@ -99,6 +108,7 @@ class AppState extends ChangeNotifier {
   void clearCalibration() {
     clSlope = clIntercept = flSlope = flIntercept = 0;
     clR2 = flR2 = 0;
+    calibrationLowConfidence = false;
     selectedPesticide = null;
     selectedUnit = 'ppm';
     notifyListeners();
@@ -115,6 +125,7 @@ class AppState extends ChangeNotifier {
     await prefs.setDouble('fl_intercept',  flIntercept);
     await prefs.setDouble('cl_r2',         clR2);
     await prefs.setDouble('fl_r2',         flR2);
+    await prefs.setBool('cal_low_confidence', calibrationLowConfidence);
     if (selectedPesticide != null) {
       await prefs.setString('selected_pesticide', selectedPesticide!);
     }
@@ -124,7 +135,8 @@ class AppState extends ChangeNotifier {
   Future<void> _clearPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     for (final k in ['cl_slope','cl_intercept','fl_slope','fl_intercept',
-                     'cl_r2','fl_r2','selected_pesticide','selected_unit']) {
+                     'cl_r2','fl_r2','cal_low_confidence',
+                     'selected_pesticide','selected_unit']) {
       await prefs.remove(k);
     }
   }
@@ -142,6 +154,7 @@ class AppState extends ChangeNotifier {
     flIntercept = prefs.getDouble('fl_intercept') ?? 0;
     clR2        = prefs.getDouble('cl_r2') ?? 0;
     flR2        = prefs.getDouble('fl_r2') ?? 0;
+    calibrationLowConfidence = prefs.getBool('cal_low_confidence') ?? false;
     selectedPesticide = prefs.getString('selected_pesticide');
     selectedUnit = prefs.getString('selected_unit') ?? 'ppm';
     notifyListeners();
